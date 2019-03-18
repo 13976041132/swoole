@@ -4,7 +4,6 @@
  * @createTime  : 2019/3/18 上午10:42
  * @description :
  */
-
 namespace swoole\inter;
 
  interface Iserver {
