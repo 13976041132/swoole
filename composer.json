@@ -1,0 +1,13 @@
+{
+    "name": "xingfuyi/swoole",
+    "description": "swoole,coroutine",
+    "license": "mit",
+    "authors": [
+        {
+            "name": "邢福宜",
+            "email": "v-xingfuyi@xiaomi.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {}
+}
