@@ -5,6 +5,8 @@
  * @description :
  */
 
+namespace swoole\swoole;
+
  class Server  implements Iserver{
 
  	public function run(){

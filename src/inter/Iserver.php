@@ -5,6 +5,8 @@
  * @description :
  */
 
+namespace swoole\inter;
+
  interface Iserver {
 
 	 public function start();

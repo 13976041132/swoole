@@ -9,5 +9,12 @@
         }
     ],
     "minimum-stability": "dev",
-    "require": {}
+    "require": {
+        "xingfuyi/swoole": "dev-master"
+    },
+    "autoload": {
+        "psr-4": {
+            "swoole\\": "src/"
+        }
+    }
 }
