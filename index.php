@@ -19,4 +19,6 @@
     }
     spl_autoload_register('classAutoLoader');
 
-(new swoole\swoole\Process())->run();
+$a = new Swoole\Server('127.0.0.1,8003');
+$a->on('receive',function(){});
+$a->start();
