@@ -1,10 +1,10 @@
 {
-    "name": "xingfuyi/swoole",
+    "name": "Eli/swoole",
     "description": "swoole,coroutine",
     "license": "mit",
     "authors": [
         {
-            "name": "邢福宜",
+            "name": "Eli-xingfuyi",
             "email": "v-xingfuyi@xiaomi.com"
         }
     ],
@@ -14,7 +14,7 @@
     },
     "autoload": {
         "psr-4": {
-            "Swoole\\": "src/"
+            "Eli\\Job\\": "src/"
         }
     }
 }
