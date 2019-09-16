@@ -36,14 +36,17 @@ class Process
 
     }
 
-    //执行fork系统调用，启动进程
+    /**
+     * 执行fork系统调用，启动进程
+     * @return integer
+     */
     public function start()
     {
 
     }
 
     //name方法应当在start之后的子进程回调函数中使用
-    public function name()
+    public function name($name)
     {
 
     }
@@ -72,7 +75,7 @@ class Process
     }
 
     //设置管道读写操作的超时时间
-    public function setTimeout(ouble $timeout)
+    public function setTimeout(double $timeout)
     {
 
     }
@@ -152,31 +155,36 @@ class Process
 
     }
 
-    /*
+    /**
      *向指定pid进程发送信号
      * 默认的信号为SIGTERM，表示终止进程
-     *$signo=0，可以检测进程是否存在，不会发送信号
-    */
+     *@param int $signo=0，可以检测进程是否存在，不会发送信号
+     *@param $pid int
+     * @return bool
+     */
     public static function kill($pid, $signo = SIGTERM)
     {
 
     }
 
-    /*
-     *回收结束运行的子进程。
-    */
+    /**
+     * 回收结束运行的子进程
+     * @param bool $blocking
+     * @return array
+     */
     public static function wait(bool $blocking = TRUE)
     {
 
     }
 
-    /*
+    /**
      * 使当前进程蜕变为一个守护进程
      *$nochdir，为true表示不要切换当前目录到根目录。
      *$noclose，为true表示不要关闭标准输入输出文件描述符。
      * 此函数在1.7.5版本后可用
      * 1.9.1或更高版本修改了默认值，现在默认nochir和noclose均为true
      *蜕变为守护进程时，该进程的PID将发生变化，可以使用getmypid()来获取当前的PID
+     * @return bool
     */
     public static function daemon(bool $nochdir = TRUE, bool $noclose = TRUE)
     {
@@ -190,7 +198,7 @@ class Process
      *   $callback如果为null，表示移除信号监听
      *   如果已设置了此信号的回调函数，重新设置时会覆盖历史设置
     */
-    public static function signal(int $signo, callable $callback)
+    public static function signal( $signo, callable $callback)
     {
 
     }

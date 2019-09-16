@@ -1,8 +1,12 @@
 <?php
 
-    namespace Eli\Job\Core;
+    namespace Eli\Job\Core\Queue;
 
-    class RedisQueue implements Interf\Iqueue {
+    use Exception;
+    use Redis;
+    use Eli\Job\Core\Log;
+
+    class RedisQueue implements QueueInterface {
 
         public $logger = '';
 
@@ -14,7 +18,7 @@
 
         protected $_password = '';
 
-        public static $useing_redis_pool = [];//使用资源池
+        public static $using_redis_pool = [];//使用资源池
         public static $not_use_redis_pool = [];//未使用资源池
 
 
@@ -32,22 +36,18 @@
 
 
 
-
-
-
         /**
          * 连接redis
          */
-
-        public function conncet()
+        public function connect()
         {
             try{
-                $this->redis = new \Redis();
+                $this->redis = new Redis();
                 $this->redis->connect($this->_host,$this->_port);
                 if($this->_password){
                     $this->redis->auth($this->_password);
                 }
-            }catch (\Exception $e){
+            }catch (Exception $e){
                 $this->logger->log($e->getMessage().PHP_EOL,LOG_ERR);
             }
 
@@ -94,30 +94,39 @@
 
         /**
          * 释放连接
+         *
          */
         public function free(){
-            if(!$this->redis instanceof \Redis){
-                $this->redis->close();
+            if($this->redis instanceof Redis){
+                $this->getRedis()->close();
             }
         }
 
 
         /**
          * 查看队列长度
+         * @param $list_key
+         * @return bool|int
          */
-
         public function getListCount($list_key){
             try{
-
-                if(!$this->redis instanceof \Redis){
-                    throw new Exception('please conncet redis...');
+                if(!$this->redis instanceof Redis){
+                    throw new Exception('please connect redis...');
                 }
-                return $this->redis->lLen($list_key);
-            }catch (\Exception $e){
+                return $this->getRedis()->lLen($list_key);
+            }catch (Exception $e){
                 $this->logger->log($e->getMessage());
                 return false;
 
             }
         }
 
+
+        /**
+         * 获取对象实例
+         * @return Redis|string
+         */
+        public function getRedis(){
+            return $this->redis;
+        }
     }

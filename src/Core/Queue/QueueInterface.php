@@ -4,9 +4,9 @@
      * 定义接口
      */
 
-    namespace Eli\Job\Core\Interf;
+    namespace Eli\Job\Core\Queue;
 
-    interface Iqueue{
+    interface QueueInterface{
 
         /**
          * 消费数据
@@ -32,7 +32,7 @@
 
         public function push();
 
-        public function conncet();
+        public function connect();
 
 
     }

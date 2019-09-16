@@ -14,10 +14,14 @@
 
         }
 
-        public function log($log_message, $level=LOG_ERR, $file_path = ''){
-
+        /**
+         * @param $log_message
+         * @param int $level
+         * @param string $file_path
+         */
+        public function log($log_message, $level=LOG_ERR, $file_path = '')
+        {
             switch($level){
-
                 case 4:
                     $level = 'LOG_WARNING';
                     break;
@@ -33,7 +37,6 @@
                 default:
                     $level = 'LOG_ERR';
             }
-
             $log_message = '['.$level.']:'.$log_message.PHP_EOL;
             $this->write($log_message,$file_path?:$this->_log_file);
         }
@@ -42,13 +45,11 @@
              $this->log($log_message,LOG_ERR,$this->_error_file);
         }
 
-
-
         /**
          * @param $log_message
          * @param $file_path
+         * @return bool
          */
-
         public function write($log_message,$file_path){
 
             if($this->createFileDir(dirname($file_path))){
@@ -59,7 +60,7 @@
         }
 
         /**
-         * @param $file_base_path 文件目录
+         * @param $file_base_path
          * @return bool
          */
         public function createFileDir($file_base_path)

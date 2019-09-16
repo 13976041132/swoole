@@ -3,15 +3,14 @@
     /**
      *
      */
-    namespace  Eli\Job\Core\Interf;
+    namespace  Eli\Job\Core;
 
-    interface IswooleService{
+    interface ProcessInterface{
 
         public function start();
         public function restart();
         public function stop();
         public function kill();
-        public function help();
 
 
     }
