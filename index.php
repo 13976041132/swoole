@@ -5,17 +5,11 @@
      * @description :
      */
 
-
     require_once(__DIR__ . '/init.php');
-
     try{
-
         if(IS_CLI){
-
-            (new \Eli\Job\Core\Console($config))->run();
-
+            (new Eli\Job\Core\Console($config))->run();
         }
-
     }catch (exception $e){
         var_dump($e);
     }

@@ -3,8 +3,6 @@
     namespace Eli\Job\Core;
 
     use Exception;
-    use Swoole\Timer;
-    use Eli\Job\Core\Queue\RedisQueue;
     use Swoole\Process as swoole_process;
 
     /**
@@ -16,10 +14,8 @@
 
     class Process implements ProcessInterface
     {
-
-        const TIMER_TICK                       = 5 * 1000;     //定时器，每五秒执行一次
         const WORKER_ASSIGN                    = 'dynamic';    //进程是否支持动态分配
-        const CREATE_TRY_TIME                  = 5;            //创建尝试次数
+        const CREATE_TRY_TIMES                 = 5;            //创建尝试次数
         const MASTER_STATUS_WAIT               = 'wait';       //平滑退出
         const MASTER_STATUS_RUN                = 'run';        //进程启动时的状态
         const MASTER_STATUS_STOP               = 'stop';       //进程停止时的状态
@@ -41,7 +37,10 @@
         protected $_config             = '';                              //配置信息
         protected $_logger             = null;                            //log对象
         protected $_is_daemon          = false;                           //是否守护进程
+        protected $_timer_name_list    = [];
         public    $topics              = [];
+        public    $timers              = [];                             //定时器任务对象管理
+
 
         public function __construct()
         {
@@ -50,7 +49,9 @@
 
                 $this->topics  = $this->_config['topics']??[];
 
-                $this->_is_daemon = $this->_config['daemon']?false:false;
+                $this->_is_daemon = $this->_config['daemonize']??false;
+
+                $this->_timer_name_list = $this->_config['timers']??[];//定时器类的列表
 
                 $this->__master_pid_log = $this->_config['master_pid_log']??$this->__master_pid_log;
 
@@ -71,9 +72,7 @@
             try{
                 //先判断进程是否在启用
                 if ($this->_checkRunning()) {
-
                     $this->_logger->log('process always running', LOG_INFO);
-
                     die('process always running...' . PHP_EOL);
                 }
                 //设置守护进程
@@ -87,8 +86,6 @@
                 }
             }catch (Exception $e){
                 $this->_logger->exceptionLog($e->getMessage());
-                exit();
-
             }
         }
 
@@ -101,33 +98,36 @@
 
             });
 
+            //子进程退出触发该信号
             swoole_process::signal(SIGCHLD, function () {
-                $this->_newWorkerJob();
+                $this->_restartForkWorkerJob();
             });
 
+            //kill主进程 触发该信号
             swoole_process::signal(SIGKILL, function () {
                 //退出所有子进程和主进程
                 $this->_killWorkerAndExitMaster();
             });
 
+            //ctrl+c  触发该信号
             swoole_process::signal(SIGINT, function () {
                 //退出所有子进程和主进程
                $this->_killWorkerAndExitMaster();
-                echo 2;
             });
 
+            //进程终止运行()
             swoole_process::signal(SIGTERM, function () {
                 //退出所有子进程和主进程
                 $this->_killWorkerAndExitMaster();
             });
 
+            //自定义停止进程运行(平滑重启)
             swoole_process::signal(SIGUSR2, function () {
                 $this->__master_status = self::MASTER_STATUS_WAIT;
                 if (count($this->__worker_pids)) {
                     $this->_exitMaster();
                 }
             });
-
         }
 
 
@@ -136,27 +136,14 @@
          */
         protected function _registerTime()
         {
-            /**
-             * 注册定时器,查看是否需要队列数据是否阻塞
-             */
-            Timer::tick(self::TIMER_TICK, function () {
-                foreach ($this->__worker_bind_topic as $topic) {
-                    //链接redis
-                    $redis_queue = new RedisQueue($this->_config['queue']);
-                    $redis_queue->connect();
-                    if (($list_length = $redis_queue->getListCount($topic->topic_name)) > self::WARNING_MAX_VALUE_LIMIT) {
-                        $redis_queue->logger->log('queue name:' . $topic->topic_name . ',Queue Length=' . $list_length . ', Exceeding Threshold');
-                        /**
-                         * 查看当前队列的进程是否满足有空闲的队列
-                         * 是否动态创建子进程
-                         */
-                        if ($this->_isDynamicCreatedWorker($topic)) {
-                            $this->_createProcess($topic);
-                        }
-                    }
-                    $redis_queue->free();
-                }
-            });
+            $this->_timer_name_list = (array)$this->_timer_name_list;
+           foreach($this->_timer_name_list as $timer_name) {
+               //判断定时器任务是否存在
+               if(class_exists($timer_name) && is_subclass_of($timer_object = new $timer_name(),'Eli\Job\Core\Timer')){
+                   $timer_object->register();
+                   //在主进程记录定时器管理，当服务停止,移除定时器
+               }
+           }
         }
 
         /**
@@ -165,55 +152,47 @@
         protected function _registerTopic()
         {
             foreach ($this->topics as $topic_name => $topic_info) {
-
                 $topic = new Topic($topic_info);
-
-                $this->__worker_bind_topic[] = $topic;
-
+                $topic_hash = spl_object_hash($topic);
+                $this->__worker_bind_topic[$topic_hash] = $topic;
                 //创建进程
-                for($created_sum = 0; $created_sum < $topic->min_worker_nums; $created_sum++){
+                for($create_sum = 0; $create_sum < $topic->min_worker_nums; $create_sum++){
                     $this->_createProcess($topic);
                 }
             }
-
         }
-
 
         /**
          * 当子进程退出的退出,则重新创建进程
          */
-        protected function _newWorkerJob()
+        protected function _restartForkWorkerJob()
         {
             try{
                 while ($ret = swoole_process::wait(false)) {
-                    $topic = $this->__worker_pids[$ret['pid']];
+                    $topic = $this->__worker_pids[$ret['pid']]??'';
                     unset($this->__worker_pids[$ret['pid']]);
-                    $this->_subQueueWorker($topic);
-
+                    if(!$topic instanceof Topic){
+                        break;
+                    }
+                    $this->_subChildWorkerTotal($topic);
                     if ($this->__master_status === self::MASTER_STATUS_RUN
                         && $topic->min_worker_nums > $this->_queue_worker_count[$topic->topic_name]) {
-
                         //判断当前的队列进程是否需要创建子进程
-                        $process = $this->_createProcess($topic);
-                        if ($process) {
+                        if ($process = $this->_createProcess($topic)) {
                             $this->_setWorkerName($topic->topic_name, $process);
                         }
-                        //$this->_logger->log('child worker restart, topic name is ' . $worker_topic->topic_name . PHP_EOL, LOG_INFO);
                     }
                 }
             }catch (Exception $e){
 
             }
-
         }
-
 
         /**
          *退出子进程
          */
         protected function _killWorkerAndExitMaster()
         {
-
             $this->__master_status = self::MASTER_STATUS_STOP;
             //杀死进程
             foreach ($this->__worker_pids as $worker_id => $topic) {
@@ -230,9 +209,7 @@
          */
         protected function _exitMaster()
         {
-
             //清理文件信息
-
             @unlink($this->__master_pid_log);
 
             //子进程退出完后，主进程直接用exit()退出,不要用kill/exit，会触发信号监听
@@ -266,7 +243,7 @@
                 //获取进程的数据
                 $this->__master_id = $this->__master_id ?: trim(file_get_contents($this->__master_pid_log));
                 //多次确认进程是否在运行
-                for($try_time = 0; $try_time<self::CREATE_TRY_TIME;$try_time++){
+                for($try_times = 0; $try_times<self::CREATE_TRY_TIMES;$try_times++){
                     if (!swoole_process::kill($this->__master_id, 0)) {
                         return false;
                     }
@@ -287,7 +264,6 @@
                 return true;
             }
             return false;
-
         }
 
         /**
@@ -309,42 +285,13 @@
         protected function _createProcess(Topic $topic)
         {
             $process = new swoole_process(function () use ($topic) {
-                try{
-                    if (!swoole_process::kill($this->__master_id, 0)) {
-                        exit();
-                    }
-                    //连接redis
-                    $redis_queue = new RedisQueue($this->_config['queue']);
-                    $redis_queue->connect();
-                    if ($redis_queue->getListCount($topic->topic_use_queue) > 0) {
-                        $pop_data_count = $pop_empty_time = 0;
-
-                        do {
-                            $data = $redis_queue->getRedis()->lPop($topic->topic_use_queue);
-                            if (empty($data)) {
-                                usleep(100);
-
-                                if (++$pop_empty_time > 10) {
-                                    break;
-                                }
-                                continue;
-                            }
-                            $pop_data_count++;
-                        } while ($pop_data_count < self::WORKER_CONSUME_QUEUE_MAX_LENGTH);
-                    } else {
-                        sleep(2);
-                    }
-                    $redis_queue->free();
-                }catch (Exception $e){
-                    if(isset($redis_queue) && $redis_queue instanceof RedisQueue){
-                        $redis_queue->free();
-                    }
-                    $this->_logger->exceptionLog($e);
+                if (!swoole_process::kill($this->__master_id, 0)) {
+                    exit(250);
                 }
-
+                $topic->callUserFunc();
             });
             $worker_pid = 0;
-            for($try_time = 0; $try_time<self::CREATE_TRY_TIME;$try_time++){
+            for($try_times = 0; $try_times<self::CREATE_TRY_TIMES;$try_times++){
                 if ($worker_pid = $process->start()) {
                     break;
                 }
@@ -354,12 +301,9 @@
                 $this->_logger->log('fork worker fail...' . PHP_EOL);
                 return false;
             }
-            $this->_addQueueWorker($topic);
-
+            $this->_addChildWorkerTotal($topic);
             $this->__worker_pids[$worker_pid] = $topic;
-
             return $process;
-
         }
 
         /**
@@ -376,11 +320,10 @@
          * 自增子进程数量
          * @param Topic $topic
          */
-        protected function _addQueueWorker(Topic $topic)
+        protected function _addChildWorkerTotal(Topic $topic)
         {
-
             if (!isset($this->_queue_worker_count[$topic->topic_name])) {
-                $this->_queue_worker_count[$topic->topic_name] = 0;
+                $this->_queue_worker_count[$topic->topic_name] = 1;
             } else {
                 $this->_queue_worker_count[$topic->topic_name]++;
             }
@@ -391,27 +334,27 @@
          * 自减子进程数量
          *  @param $topic
          */
-        protected function _subQueueWorker(Topic $topic)
+        protected function _subChildWorkerTotal(Topic $topic)
         {
-
             $this->_queue_worker_count[$topic->topic_name]--;
         }
 
 
         public function start()
         {
-            $this->_init();
-            $this->_registerTopic();
-            $this->_registerSignal();
+//            $this->_init();
+//            $this->_registerTopic();
+//            $this->_registerSignal();
             $this->_registerTime();
         }
 
         /**
          * 强制杀死进程
+         * @return bool
          */
         public function kill()
         {
-            for($try_time=0; $try_time<self::CREATE_TRY_TIME;$try_time++){
+            for($try_times=0; $try_times<self::CREATE_TRY_TIMES;$try_times++){
                 //获取进程退出
                 if (!$this->_checkRunning()) {
                     return true;
@@ -419,7 +362,6 @@
                 @swoole_process::kill($this->__master_id);
                 sleep(1);
             }
-
             return false;
         }
 
@@ -438,7 +380,7 @@
         public function stop()
         {
             try{
-                for($try_time=0; $try_time<self::CREATE_TRY_TIME;$try_time++){
+                for($try_times=0; $try_times<self::CREATE_TRY_TIMES;$try_times++){
                     //获取进程退出
                     if (!$this->_checkRunning()) {
                         return true;

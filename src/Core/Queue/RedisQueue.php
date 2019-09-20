@@ -49,8 +49,8 @@
                 }
             }catch (Exception $e){
                 $this->logger->log($e->getMessage().PHP_EOL,LOG_ERR);
+                return false;
             }
-
             return $this;
         }
 

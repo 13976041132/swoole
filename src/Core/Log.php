@@ -68,7 +68,6 @@
             if (!is_dir($file_base_path)) {
                 //创建文件
                 return mkdir($file_base_path, 0777, true);
-
             }
             return true;
         }

@@ -6,9 +6,7 @@
         {
             $this->checkPhpVersion();
             $this->checkSwooleExtension();
-
         }
-
 
         public function checkPhpVersion(){
             if(version_compare(PHP_VERSION,'7.0','<')) {
@@ -24,6 +22,5 @@
                die('请安装swoole扩展');
            }
         }
-
     }
 
